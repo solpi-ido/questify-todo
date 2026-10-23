@@ -13,11 +13,16 @@
         body { font-family: 'Heebo', sans-serif; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
         function App() {
+            const [darkMode, setDarkMode] = React.useState(() => {
+                const saved = localStorage.getItem('questify_dark');
+                return saved ? JSON.parse(saved) : false;
+            });
+
             const [quests, setQuests] = React.useState(() => {
                 const saved = localStorage.getItem('questify_quests');
                 return saved ? JSON.parse(saved) : [
@@ -46,6 +51,10 @@
             React.useEffect(() => {
                 localStorage.setItem('questify_player', JSON.stringify(player));
             }, [player]);
+
+            React.useEffect(() => {
+                localStorage.setItem('questify_dark', JSON.stringify(darkMode));
+            }, [darkMode]);
 
             const addQuest = (e) => {
                 e.preventDefault();
@@ -121,155 +130,174 @@
 
             const xpPercentage = Math.min(100, (player.xp / player.nextLevelXp) * 100);
 
+            // Theme classes (Default is now Light mode!)
+            const bgMain = darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
+            const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm';
+            const inputBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
+            const subText = darkMode ? 'text-slate-400' : 'text-slate-500';
+            const statBox = darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200';
+            const tagBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700';
+
             return (
-                <div className="max-w-4xl mx-auto p-4 md:p-8">
-                    {/* Header & Player Stats */}
-                    <header className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl">
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                            <div>
-                                <h1 className="text-3xl font-black bg-gradient-to-r from-amber-400 to-indigo-400 bg-clip-text text-transparent">
-                                    ⚔️ Questify Todo
-                                </h1>
-                                <p className="text-slate-400 text-sm mt-1">נהל משימות, צבור XP והפוך את העבודה למשחק</p>
-                            </div>
-                            
-                            <div className="flex items-center gap-4 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800">
-                                <div className="text-center">
-                                    <span className="text-xs text-slate-400 block">רמה</span>
-                                    <span className="text-xl font-bold text-amber-400">Lv. {player.level}</span>
-                                </div>
-                                <div className="h-8 w-px bg-slate-800"></div>
-                                <div className="text-center">
-                                    <span className="text-xs text-slate-400 block">רצף</span>
-                                    <span className="text-xl font-bold text-emerald-400">🔥 {player.streak} ימים</span>
-                                </div>
-                                <div className="h-8 w-px bg-slate-800"></div>
-                                <div className="text-center">
-                                    <span className="text-xs text-slate-400 block">זהב</span>
-                                    <span className="text-xl font-bold text-yellow-400">🪙 {player.coins}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* XP Progress Bar */}
-                        <div className="mt-6">
-                            <div className="flex justify-between text-xs text-slate-400 mb-1">
-                                <span>התקדמות לרמה הבאה</span>
-                                <span>{player.xp} / {player.nextLevelXp} XP</span>
-                            </div>
-                            <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
-                                <div className="bg-gradient-to-r from-amber-500 to-indigo-500 h-full transition-all duration-500" style={{ width: `${xpPercentage}%` }}></div>
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* Add Quest Form & AI Breakdown */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-bold text-slate-200">➕ הוספת קווסט חדש</h2>
-                            <button onClick={smartBreakdown} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
-                                ✨ פירוק מטרה חכם (AI)
-                            </button>
-                        </div>
-
-                        <form onSubmit={addQuest} className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                            <input 
-                                type="text" 
-                                placeholder="מה המשימה או הקווסט הבא שלך?" 
-                                value={newTitle}
-                                onChange={(e) => setNewTitle(e.target.value)}
-                                className="md:col-span-5 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                            />
-                            
-                            <select value={newType} onChange={(e) => setNewType(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-indigo-500">
-                                <option value="side">⚔️ קווסט צד (50 XP)</option>
-                                <option value="epic">🐉 מסע אפי (150 XP)</option>
-                                <option value="daily">📜 משימה יומית (30 XP)</option>
-                            </select>
-
-                            <select value={newEnergy} onChange={(e) => setNewEnergy(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-indigo-500">
-                                <option value="high">⚡ אנרגיה גבוהה</option>
-                                <option value="medium">☕ אנרגיה בינונית</option>
-                                <option value="low">🌙 אנרגיה נמוכה</option>
-                            </select>
-
-                            <button type="submit" className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl py-2.5 transition shadow-lg shadow-emerald-600/20">
-                                צור קווסט
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* Filters */}
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-                        <div className="flex gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
-                            <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>הכל</button>
-                            <button onClick={() => setActiveTab('active')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'active' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>פעילים</button>
-                            <button onClick={() => setActiveTab('completed')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'completed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>הושלמו</button>
-                        </div>
-
-                        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                            <span className="text-xs text-slate-400">סינון אנרגיה:</span>
-                            <select value={energyFilter} onChange={(e) => setEnergyFilter(e.target.value)} className="bg-transparent text-sm text-slate-200 focus:outline-none">
-                                <option value="all" className="bg-slate-900">הכל</option>
-                                <option value="high" className="bg-slate-900">⚡ גבוהה</option>
-                                <option value="medium" className="bg-slate-900">☕ בינונית</option>
-                                <option value="low" className="bg-slate-900">🌙 נמוכה</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Quest List */}
-                    <div className="space-y-3">
-                        {filteredQuests.length === 0 ? (
-                            <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-2xl text-slate-500">
-                                אין קווסטים להצגה כרגע. צור קווסט חדש למעלה! 🛡️
-                            </div>
-                        ) : (
-                            filteredQuests.map(q => {
-                                const energyBadge = {
-                                    high: { label: '⚡ גבוהה', class: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
-                                    medium: { label: '☕ בינונית', class: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-                                    low: { label: '🌙 נמוכה', class: 'text-purple-400 bg-purple-400/10 border-purple-400/20' }
-                                }[q.energy] || { label: '', class: '' };
-
-                                const typeBadge = {
-                                    epic: '🐉 מסע אפי',
-                                    side: '⚔️ קווסט צד',
-                                    daily: '📜 משימה יומית'
-                                }[q.type];
-
-                                return (
-                                    <div key={q.id} className={`flex items-center justify-between p-4 rounded-xl border transition bg-slate-900 ${q.completed ? 'border-emerald-500/30 opacity-60' : 'border-slate-800 hover:border-slate-700'}`}>
-                                        <div className="flex items-center gap-4">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={q.completed} 
-                                                onChange={() => toggleQuest(q.id)}
-                                                className="w-5 h-5 accent-emerald-500 rounded cursor-pointer"
-                                            />
-                                            <div>
-                                                <h3 className={`font-semibold text-slate-100 ${q.completed ? 'line-through text-slate-400' : ''}`}>
-                                                    {q.title}
-                                                </h3>
-                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                                    <span className="text-xs px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-slate-300">{typeBadge}</span>
-                                                    <span className={`text-xs px-2 py-0.5 rounded-md border ${energyBadge.class}`}>{energyBadge.label}</span>
-                                                    <span className="text-xs text-amber-400 font-bold">+{q.xp} XP</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
+                <div className={`min-h-screen transition-colors duration-300 ${bgMain}`}>
+                    <div className="max-w-4xl mx-auto p-4 md:p-8">
+                        {/* Header & Player Stats */}
+                        <header className={`${cardBg} border rounded-2xl p-6 mb-8 shadow-xl transition-colors`}>
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                                <div>
+                                    <div className="flex items-center gap-3">
+                                        <h1 className="text-3xl font-black bg-gradient-to-r from-amber-500 to-indigo-600 bg-clip-text text-transparent">
+                                            ⚔️ Questify Todo
+                                        </h1>
                                         <button 
-                                            onClick={() => deleteQuest(q.id)}
-                                            className="text-slate-500 hover:text-red-400 p-2 transition"
-                                            title="מחק קווסט"
+                                            onClick={() => setDarkMode(!darkMode)}
+                                            className={`p-2 rounded-xl border text-sm transition ${darkMode ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
+                                            title="החלף מצב תצוגה (כהה/בהיר)"
                                         >
-                                            🗑️
+                                            {darkMode ? '☀️ מצב בהיר' : '🌙 מצב כהה'}
                                         </button>
                                     </div>
-                                );
-                            })
-                        )}
+                                    <p className={`${subText} text-sm mt-1`}>נהל משימות, צבור XP והפוך את העבודה למשחק</p>
+                                </div>
+                                
+                                <div className={`flex items-center gap-4 ${statBox} px-5 py-3 rounded-xl border transition-colors`}>
+                                    <div className="text-center">
+                                        <span className={`text-xs ${subText} block`}>רמה</span>
+                                        <span className="text-xl font-bold text-amber-500">Lv. {player.level}</span>
+                                    </div>
+                                    <div className={`h-8 w-px ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
+                                    <div className="text-center">
+                                        <span className={`text-xs ${subText} block`}>רצף</span>
+                                        <span className="text-xl font-bold text-emerald-600">🔥 {player.streak} ימים</span>
+                                    </div>
+                                    <div className={`h-8 w-px ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
+                                    <div className="text-center">
+                                        <span className={`text-xs ${subText} block`}>זהב</span>
+                                        <span className="text-xl font-bold text-yellow-500">🪙 {player.coins}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* XP Progress Bar */}
+                            <div className="mt-6">
+                                <div className={`flex justify-between text-xs ${subText} mb-1`}>
+                                    <span>התקדמות לרמה הבאה</span>
+                                    <span>{player.xp} / {player.nextLevelXp} XP</span>
+                                </div>
+                                <div className={`w-full ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-200 border-slate-300'} h-3 rounded-full overflow-hidden border`}>
+                                    <div className="bg-gradient-to-r from-amber-500 to-indigo-600 h-full transition-all duration-500" style={{ width: `${xpPercentage}%` }}></div>
+                                </div>
+                            </div>
+                        </header>
+
+                        {/* Add Quest Form & AI Breakdown */}
+                        <div className={`${cardBg} border rounded-2xl p-6 mb-8 shadow-xl transition-colors`}>
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-lg font-bold">➕ הוספת קווסט חדש</h2>
+                                <button onClick={smartBreakdown} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
+                                    ✨ פירוק מטרה חכם (AI)
+                                </button>
+                            </div>
+
+                            <form onSubmit={addQuest} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                <input 
+                                    type="text" 
+                                    placeholder="מה המשימה או הקווסט הבא שלך?" 
+                                    value={newTitle}
+                                    onChange={(e) => setNewTitle(e.target.value)}
+                                    className={`md:col-span-5 border rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 ${inputBg}`}
+                                />
+                                
+                                <select value={newType} onChange={(e) => setNewType(e.target.value)} className={`md:col-span-2 border rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 ${inputBg}`}>
+                                    <option value="side">⚔️ קווסט צד (50 XP)</option>
+                                    <option value="epic">🐉 מסע אפי (150 XP)</option>
+                                    <option value="daily">📜 משימה יומית (30 XP)</option>
+                                </select>
+
+                                <select value={newEnergy} onChange={(e) => setNewEnergy(e.target.value)} className={`md:col-span-2 border rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 ${inputBg}`}>
+                                    <option value="high">⚡ אנרגיה גבוהה</option>
+                                    <option value="medium">☕ אנרגיה בינונית</option>
+                                    <option value="low">🌙 אנרגיה נמוכה</option>
+                                </select>
+
+                                <button type="submit" className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl py-2.5 transition shadow-lg shadow-emerald-600/20">
+                                    צור קווסט
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Filters */}
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                            <div className={`flex gap-2 ${cardBg} p-1.5 rounded-xl border transition-colors`}>
+                                <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-indigo-600 text-white' : `${subText} hover:text-indigo-600`}`}>הכל</button>
+                                <button onClick={() => setActiveTab('active')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'active' ? 'bg-indigo-600 text-white' : `${subText} hover:text-indigo-600`}`}>פעילים</button>
+                                <button onClick={() => setActiveTab('completed')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'completed' ? 'bg-indigo-600 text-white' : `${subText} hover:text-indigo-600`}`}>הושלמו</button>
+                            </div>
+
+                            <div className={`flex items-center gap-2 ${cardBg} px-3 py-1.5 rounded-xl border transition-colors`}>
+                                <span className={`text-xs ${subText}`}>סינון אנרגיה:</span>
+                                <select value={energyFilter} onChange={(e) => setEnergyFilter(e.target.value)} className="bg-transparent text-sm focus:outline-none">
+                                    <option value="all">הכל</option>
+                                    <option value="high">⚡ גבוהה</option>
+                                    <option value="medium">☕ בינונית</option>
+                                    <option value="low">🌙 נמוכה</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Quest List */}
+                        <div className="space-y-3">
+                            {filteredQuests.length === 0 ? (
+                                <div className={`text-center py-12 ${cardBg} border rounded-2xl ${subText}`}>
+                                    אין קווסטים להצגה כרגע. צור קווסט חדש למעלה! 🛡️
+                                </div>
+                            ) : (
+                                filteredQuests.map(q => {
+                                    const energyBadge = {
+                                        high: { label: '⚡ גבוהה', class: 'text-amber-600 bg-amber-500/10 border-amber-500/20' },
+                                        medium: { label: '☕ בינונית', class: 'text-blue-600 bg-blue-500/10 border-blue-500/20' },
+                                        low: { label: '🌙 נמוכה', class: 'text-purple-600 bg-purple-500/10 border-purple-500/20' }
+                                    }[q.energy] || { label: '', class: '' };
+
+                                    const typeBadge = {
+                                        epic: '🐉 מסע אפי',
+                                        side: '⚔️ קווסט צד',
+                                        daily: '📜 משימה יומית'
+                                    }[q.type];
+
+                                    return (
+                                        <div key={q.id} className={`flex items-center justify-between p-4 rounded-xl border transition ${cardBg} ${q.completed ? 'border-emerald-500/40 opacity-60' : ''}`}>
+                                            <div className="flex items-center gap-4">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={q.completed} 
+                                                    onChange={() => toggleQuest(q.id)}
+                                                    className="w-5 h-5 accent-emerald-500 rounded cursor-pointer"
+                                                />
+                                                <div>
+                                                    <h3 className={`font-semibold ${q.completed ? 'line-through text-slate-400' : ''}`}>
+                                                        {q.title}
+                                                    </h3>
+                                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                        <span className={`text-xs px-2 py-0.5 rounded-md border ${tagBg}`}>{typeBadge}</span>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-md border ${energyBadge.class}`}>{energyBadge.label}</span>
+                                                        <span className="text-xs text-amber-500 font-bold">+{q.xp} XP</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => deleteQuest(q.id)}
+                                                className="text-slate-400 hover:text-red-500 p-2 transition"
+                                                title="מחק קווסט"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
             );
