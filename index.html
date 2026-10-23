@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Questify Todo - RPG Task Manager</title>
+    <title>Questify Todo - Full-Stack RPG Manager</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -23,19 +23,8 @@
                 return saved ? JSON.parse(saved) : false;
             });
 
-            const [quests, setQuests] = React.useState(() => {
-                const saved = localStorage.getItem('questify_quests');
-                return saved ? JSON.parse(saved) : [
-                    { id: 1, title: 'לפתח אבטיפוס ראשוני לאפליקציה', type: 'epic', energy: 'high', xp: 150, completed: false, category: 'פיתוח' },
-                    { id: 2, title: 'סידור שולחן עבודה וניקיון מייל', type: 'daily', energy: 'low', xp: 30, completed: true, category: 'ארגון' },
-                    { id: 3, title: 'קריאת פרק בספר מקצועי', type: 'side', energy: 'medium', xp: 50, completed: false, category: 'למידה' }
-                ];
-            });
-
-            const [player, setPlayer] = React.useState(() => {
-                const saved = localStorage.getItem('questify_player');
-                return saved ? JSON.parse(saved) : { level: 3, xp: 240, nextLevelXp: 500, streak: 5, coins: 120 };
-            });
+            const [quests, setQuests] = React.useState([]);
+            const [player, setPlayer] = React.useState({ level: 1, xp: 0, next_level_xp: 500, streak: 1, coins: 0 });
 
             const [activeTab, setActiveTab] = React.useState('all');
             const [energyFilter, setEnergyFilter] = React.useState('all');
@@ -44,81 +33,76 @@
             const [newEnergy, setNewEnergy] = React.useState('medium');
             const [newCategory, setNewCategory] = React.useState('כללי');
 
-            React.useEffect(() => {
-                localStorage.setItem('questify_quests', JSON.stringify(quests));
-            }, [quests]);
+            const fetchData = async () => {
+                try {
+                    const qRes = await fetch('/api/quests');
+                    const qData = await qRes.json();
+                    setQuests(qData);
+
+                    const pRes = await fetch('/api/player');
+                    const pData = await pRes.json();
+                    setPlayer(pData);
+                } catch (err) {
+                    console.error("Error fetching data:", err);
+                }
+            };
 
             React.useEffect(() => {
-                localStorage.setItem('questify_player', JSON.stringify(player));
-            }, [player]);
+                fetchData();
+            }, []);
 
             React.useEffect(() => {
                 localStorage.setItem('questify_dark', JSON.stringify(darkMode));
             }, [darkMode]);
 
-            const addQuest = (e) => {
+            const addQuest = async (e) => {
                 e.preventDefault();
                 if (!newTitle.trim()) return;
                 const xpMap = { epic: 150, side: 50, daily: 30 };
-                const newItem = {
-                    id: Date.now(),
+                const newQuest = {
                     title: newTitle,
                     type: newType,
                     energy: newEnergy,
                     xp: xpMap[newType] || 50,
-                    completed: false,
                     category: newCategory
                 };
-                setQuests([newItem, ...quests]);
+
+                await fetch('/api/quests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newQuest)
+                });
+
                 setNewTitle('');
+                fetchData();
             };
 
-            const toggleQuest = (id) => {
-                setQuests(quests.map(q => {
-                    if (q.id === id) {
-                        const nextCompleted = !q.completed;
-                        if (nextCompleted) {
-                            addXp(q.xp);
-                        } else {
-                            removeXp(q.xp);
-                        }
-                        return { ...q, completed: nextCompleted };
-                    }
-                    return q;
-                }));
+            const toggleQuest = async (id) => {
+                await fetch(`/api/quests/${id}/toggle`, { method: 'PATCH' });
+                fetchData();
             };
 
-            const addXp = (amount) => {
-                let newXp = player.xp + amount;
-                let newLevel = player.level;
-                let nextXp = player.nextLevelXp;
-                let newCoins = player.coins + Math.floor(amount / 2);
-
-                if (newXp >= nextXp) {
-                    newLevel += 1;
-                    newXp -= nextXp;
-                    nextXp = Math.floor(nextXp * 1.3);
-                }
-                setPlayer({ ...player, xp: newXp, level: newLevel, nextLevelXp: nextXp, coins: newCoins });
+            const deleteQuest = async (id) => {
+                await fetch(`/api/quests/${id}`, { method: 'DELETE' });
+                fetchData();
             };
 
-            const removeXp = (amount) => {
-                setPlayer({ ...player, xp: Math.max(0, player.xp - amount) });
-            };
-
-            const deleteQuest = (id) => {
-                setQuests(quests.filter(q => q.id !== id));
-            };
-
-            const smartBreakdown = () => {
+            const smartBreakdown = async () => {
                 const bigGoal = prompt('הכנס מטרה גדולה (למשל: "להקים עסק דיגיטלי"):');
                 if (!bigGoal) return;
                 const generated = [
-                    { id: Date.now() + 1, title: `מחקר שוק עבור: ${bigGoal}`, type: 'epic', energy: 'high', xp: 150, completed: false, category: 'אסטרטגיה' },
-                    { id: Date.now() + 2, title: `כתיבת תוכנית עבודה ראשונית`, type: 'side', energy: 'medium', xp: 75, completed: false, category: 'תכנון' },
-                    { id: Date.now() + 3, title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, completed: false, category: 'הקמה' }
+                    { title: `מחקר שוק עבור: ${bigGoal}`, type: 'epic', energy: 'high', xp: 150, category: 'אסטרטגיה' },
+                    { title: `כתיבת תוכנית עבודה ראשונית`, type: 'side', energy: 'medium', xp: 75, category: 'תכנון' },
+                    { title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, category: 'הקמה' }
                 ];
-                setQuests([...generated, ...quests]);
+                for (const q of generated) {
+                    await fetch('/api/quests', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(q)
+                    });
+                }
+                fetchData();
             };
 
             const filteredQuests = quests.filter(q => {
@@ -128,9 +112,9 @@
                 return true;
             });
 
-            const xpPercentage = Math.min(100, (player.xp / player.nextLevelXp) * 100);
+            const xpPercentage = Math.min(100, (player.xp / player.next_level_xp) * 100);
 
-            // Theme classes (Default is now Light mode!)
+            // Theme classes
             const bgMain = darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
             const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm';
             const inputBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
@@ -147,7 +131,7 @@
                                 <div>
                                     <div className="flex items-center gap-3">
                                         <h1 className="text-3xl font-black bg-gradient-to-r from-amber-500 to-indigo-600 bg-clip-text text-transparent">
-                                            ⚔️ Questify Todo
+                                            ⚔️ Questify Todo (Full-Stack)
                                         </h1>
                                         <button 
                                             onClick={() => setDarkMode(!darkMode)}
@@ -157,7 +141,7 @@
                                             {darkMode ? '☀️ מצב בהיר' : '🌙 מצב כהה'}
                                         </button>
                                     </div>
-                                    <p className={`${subText} text-sm mt-1`}>נהל משימות, צבור XP והפוך את העבודה למשחק</p>
+                                    <p className={`${subText} text-sm mt-1`}>מנוהל ע״י שרת Python FastAPI ומסד נתונים SQLite</p>
                                 </div>
                                 
                                 <div className={`flex items-center gap-4 ${statBox} px-5 py-3 rounded-xl border transition-colors`}>
@@ -182,7 +166,7 @@
                             <div className="mt-6">
                                 <div className={`flex justify-between text-xs ${subText} mb-1`}>
                                     <span>התקדמות לרמה הבאה</span>
-                                    <span>{player.xp} / {player.nextLevelXp} XP</span>
+                                    <span>{player.xp} / {player.next_level_xp} XP</span>
                                 </div>
                                 <div className={`w-full ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-200 border-slate-300'} h-3 rounded-full overflow-hidden border`}>
                                     <div className="bg-gradient-to-r from-amber-500 to-indigo-600 h-full transition-all duration-500" style={{ width: `${xpPercentage}%` }}></div>
@@ -270,7 +254,7 @@
                                             <div className="flex items-center gap-4">
                                                 <input 
                                                     type="checkbox" 
-                                                    checked={q.completed} 
+                                                    checked={Boolean(q.completed)} 
                                                     onChange={() => toggleQuest(q.id)}
                                                     className="w-5 h-5 accent-emerald-500 rounded cursor-pointer"
                                                 />
