@@ -43,18 +43,18 @@
             const [newEnergy, setNewEnergy] = React.useState('medium');
             const [newCategory, setNewCategory] = React.useState('כללי');
 
-            const fetchData = async () => {
+            const fetchData = () => {
                 if (!user) return;
                 try {
-                    const qRes = await fetch(`/api/quests?user_id=${user.id}`);
-                    const qData = await qRes.json();
-                    setQuests(qData);
+                    const allQuests = JSON.parse(localStorage.getItem('questify_quests') || '[]');
+                    const userQuests = allQuests.filter(q => q.user_id === user.id);
+                    setQuests(userQuests);
 
-                    const pRes = await fetch(`/api/player?user_id=${user.id}`);
-                    const pData = await pRes.json();
+                    const allPlayers = JSON.parse(localStorage.getItem('questify_players') || '{}');
+                    const pData = allPlayers[user.id] || { level: 1, xp: 0, next_level_xp: 500, streak: 1, coins: 0 };
                     setPlayer(pData);
                 } catch (err) {
-                    console.error("Error fetching data:", err);
+                    console.error("Error loading data:", err);
                 }
             };
 
@@ -68,28 +68,41 @@
                 localStorage.setItem('questify_dark', JSON.stringify(darkMode));
             }, [darkMode]);
 
-            const handleAuth = async (e) => {
+            const handleAuth = (e) => {
                 e.preventDefault();
                 setAuthError('');
-                const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
-                try {
-                    const res = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username: authUsername, password: authPassword })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.detail || 'שגיאת התחברות');
+                
+                const users = JSON.parse(localStorage.getItem('questify_users') || '[]');
+                
+                if (authMode === 'signup') {
+                    const existing = users.find(u => u.username === authUsername);
+                    if (existing) {
+                        setAuthError('שם המשתמש כבר קיים במערכת');
+                        return;
                     }
-                    const userData = { id: data.user_id, username: data.username };
+                    const newUser = { id: Date.now(), username: authUsername, password: authPassword };
+                    users.push(newUser);
+                    localStorage.setItem('questify_users', JSON.stringify(users));
+
+                    const allPlayers = JSON.parse(localStorage.getItem('questify_players') || '{}');
+                    allPlayers[newUser.id] = { level: 1, xp: 0, next_level_xp: 500, streak: 1, coins: 0 };
+                    localStorage.setItem('questify_players', JSON.stringify(allPlayers));
+
+                    const userData = { id: newUser.id, username: newUser.username };
                     setUser(userData);
                     localStorage.setItem('questify_user', JSON.stringify(userData));
-                    setAuthUsername('');
-                    setAuthPassword('');
-                } catch (err) {
-                    setAuthError(err.message);
+                } else {
+                    const found = users.find(u => u.username === authUsername && u.password === authPassword);
+                    if (!found) {
+                        setAuthError('שם משתמש או סיסמה שגויים');
+                        return;
+                    }
+                    const userData = { id: found.id, username: found.username };
+                    setUser(userData);
+                    localStorage.setItem('questify_user', JSON.stringify(userData));
                 }
+                setAuthUsername('');
+                setAuthPassword('');
             };
 
             const logout = () => {
@@ -97,54 +110,79 @@
                 localStorage.removeItem('questify_user');
             };
 
-            const addQuest = async (e) => {
+            const addQuest = (e) => {
                 e.preventDefault();
                 if (!newTitle.trim() || !user) return;
                 const xpMap = { epic: 150, side: 50, daily: 30 };
                 const newQuest = {
+                    id: Date.now(),
+                    user_id: user.id,
                     title: newTitle,
                     type: newType,
                     energy: newEnergy,
                     xp: xpMap[newType] || 50,
+                    completed: false,
                     category: newCategory
                 };
 
-                await fetch(`/api/quests?user_id=${user.id}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newQuest)
-                });
+                const allQuests = JSON.parse(localStorage.getItem('questify_quests') || '[]');
+                allQuests.unshift(newQuest);
+                localStorage.setItem('questify_quests', JSON.stringify(allQuests));
 
                 setNewTitle('');
                 fetchData();
             };
 
-            const toggleQuest = async (id) => {
-                await fetch(`/api/quests/${id}/toggle`, { method: 'PATCH' });
+            const toggleQuest = (id) => {
+                const allQuests = JSON.parse(localStorage.getItem('questify_quests') || '[]');
+                const questIndex = allQuests.findIndex(q => q.id === id);
+                if (questIndex === -1) return;
+
+                const q = allQuests[questIndex];
+                const newCompleted = !q.completed;
+                q.completed = newCompleted;
+                allQuests[questIndex] = q;
+                localStorage.setItem('questify_quests', JSON.stringify(allQuests));
+
+                const allPlayers = JSON.parse(localStorage.getItem('questify_players') || '{}');
+                let p = allPlayers[user.id] || { level: 1, xp: 0, next_level_xp: 500, streak: 1, coins: 0 };
+
+                if (newCompleted) {
+                    p.xp += q.xp;
+                    p.coins += Math.floor(q.xp / 2);
+                    if (p.xp >= p.next_level_xp) {
+                        p.level += 1;
+                        p.xp -= p.next_level_xp;
+                        p.next_level_xp = Math.round(p.next_level_xp * 1.3);
+                    }
+                } else {
+                    p.xp = Math.max(0, p.xp - q.xp);
+                }
+
+                allPlayers[user.id] = p;
+                localStorage.setItem('questify_players', JSON.stringify(allPlayers));
+
                 fetchData();
             };
 
-            const deleteQuest = async (id) => {
-                await fetch(`/api/quests/${id}`, { method: 'DELETE' });
+            const deleteQuest = (id) => {
+                const allQuests = JSON.parse(localStorage.getItem('questify_quests') || '[]');
+                const filtered = allQuests.filter(q => q.id !== id);
+                localStorage.setItem('questify_quests', JSON.stringify(filtered));
                 fetchData();
             };
 
-            const smartBreakdown = async () => {
+            const smartBreakdown = () => {
                 if (!user) return;
                 const bigGoal = prompt('הכנס מטרה גדולה (למשל: "להקים עסק דיגיטלי"):');
                 if (!bigGoal) return;
                 const generated = [
-                    { title: `מחקר שוק עבור: ${bigGoal}`, type: 'epic', energy: 'high', xp: 150, category: 'אסטרטגיה' },
-                    { title: `כתיבת תוכנית עבודה ראשונית`, type: 'side', energy: 'medium', xp: 75, category: 'תכנון' },
-                    { title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, category: 'הקמה' }
+                    { id: Date.now() + 1, user_id: user.id, title: `מחקר שוק עבור: ${bigGoal}`, type: 'epic', energy: 'high', xp: 150, completed: false, category: 'אסטרטגיה' },
+                    { id: Date.now() + 2, user_id: user.id, title: `כתיבת תוכנית עבודה ראשונית`, type: 'side', energy: 'medium', xp: 75, completed: false, category: 'תכנון' },
+                    { id: Date.now() + 3, user_id: user.id, title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, completed: false, category: 'הקמה' }
                 ];
-                for (const q of generated) {
-                    await fetch(`/api/quests?user_id=${user.id}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(q)
-                    });
-                }
+                const allQuests = JSON.parse(localStorage.getItem('questify_quests') || '[]');
+                localStorage.setItem('questify_quests', JSON.stringify([...generated, ...allQuests]));
                 fetchData();
             };
 
