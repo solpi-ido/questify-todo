@@ -1,5 +1,5 @@
 import sqlite3
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -12,9 +12,19 @@ DB_PATH = "/home/ido/projects/questify-todo/questify.db"
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS quests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             type TEXT NOT NULL,
             energy TEXT NOT NULL,
@@ -23,9 +33,11 @@ def init_db():
             category TEXT NOT NULL
         )
     """)
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS player (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
             level INTEGER NOT NULL,
             xp INTEGER NOT NULL,
             next_level_xp INTEGER NOT NULL,
@@ -33,25 +45,15 @@ def init_db():
             coins INTEGER NOT NULL
         )
     """)
-    # Seed default player if empty
-    cursor.execute("SELECT COUNT(*) FROM player")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO player (id, level, xp, next_level_xp, streak, coins) VALUES (1, 3, 240, 500, 5, 120)")
-    
-    # Seed default quests if empty
-    cursor.execute("SELECT COUNT(*) FROM quests")
-    if cursor.fetchone()[0] == 0:
-        default_quests = [
-            ("לפתח אבטיפוס ראשוני לאפליקציה", "epic", "high", 150, False, "פיתוח"),
-            ("סידור שולחן עבודה וניקיון מייל", "daily", "low", 30, True, "ארגון"),
-            ("קריאת פרק בספר מקצועי", "side", "medium", 50, False, "למידה")
-        ]
-        cursor.executemany("INSERT INTO quests (title, type, energy, xp, completed, category) VALUES (?, ?, ?, ?, ?, ?)", default_quests)
     
     conn.commit()
     conn.close()
 
 init_db()
+
+class UserAuth(BaseModel):
+    username: str
+    password: str
 
 class QuestCreate(BaseModel):
     title: str
@@ -60,23 +62,50 @@ class QuestCreate(BaseModel):
     xp: int
     category: str
 
-@app.get("/api/quests")
-def get_quests():
+@app.post("/api/register")
+def register(user: UserAuth):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user.username, user.password))
+        user_id = cursor.lastrowid
+        cursor.execute("INSERT INTO player (user_id, level, xp, next_level_xp, streak, coins) VALUES (?, 1, 0, 500, 1, 0)", (user_id,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="שם המשתמש כבר קיים במערכת")
+    conn.close()
+    return {"status": "registered", "user_id": user_id, "username": user.username}
+
+@app.post("/api/login")
+def login(user: UserAuth):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM quests ORDER BY id DESC")
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (user.username, user.password))
+    db_user = cursor.fetchone()
+    conn.close()
+    if not db_user:
+        raise HTTPException(status_code=400, detail="שם משתמש או סיסמה שגויים")
+    return {"status": "logged_in", "user_id": db_user["id"], "username": db_user["username"]}
+
+@app.get("/api/quests")
+def get_quests(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM quests WHERE user_id = ? ORDER BY id DESC", (user_id,))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 @app.post("/api/quests")
-def add_quest(quest: QuestCreate):
+def add_quest(quest: QuestCreate, user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO quests (title, type, energy, xp, completed, category) VALUES (?, ?, ?, ?, ?, ?)",
-        (quest.title, quest.type, quest.energy, quest.xp, False, quest.category)
+        "INSERT INTO quests (user_id, title, type, energy, xp, completed, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, quest.title, quest.type, quest.energy, quest.xp, False, quest.category)
     )
     conn.commit()
     new_id = cursor.lastrowid
@@ -103,11 +132,12 @@ def toggle_quest(quest_id: int):
         conn.close()
         raise HTTPException(status_code=404, detail="Quest not found")
     
+    user_id = quest["user_id"]
     new_completed = 0 if quest["completed"] else 1
     cursor.execute("UPDATE quests SET completed = ? WHERE id = ?", (new_completed, quest_id))
     
-    # Update player XP
-    cursor.execute("SELECT * FROM player WHERE id = 1")
+    # Update player XP for this user
+    cursor.execute("SELECT * FROM player WHERE user_id = ?", (user_id,))
     player = cursor.fetchone()
     p_level = player["level"]
     p_xp = player["xp"]
@@ -125,21 +155,32 @@ def toggle_quest(quest_id: int):
     else:
         p_xp = max(0, p_xp - q_xp)
 
-    cursor.execute("UPDATE player SET level = ?, xp = ?, next_level_xp = ?, coins = ? WHERE id = 1", (p_level, p_xp, p_next, p_coins))
+    cursor.execute("UPDATE player SET level = ?, xp = ?, next_level_xp = ?, coins = ? WHERE user_id = ?", (p_level, p_xp, p_next, p_coins, user_id))
     conn.commit()
     conn.close()
     return {"status": "updated", "completed": bool(new_completed)}
 
 @app.get("/api/player")
-def get_player():
+def get_player(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM player WHERE id = 1")
-    player = dict(cursor.fetchone())
+    cursor.execute("SELECT * FROM player WHERE user_id = ?", (user_id,))
+    player = cursor.fetchone()
+    if not player:
+        # Fallback create if missing
+        cursor.execute("INSERT INTO player (user_id, level, xp, next_level_xp, streak, coins) VALUES (?, 1, 0, 500, 1, 0)", (user_id,))
+        conn.commit()
+        cursor.execute("SELECT * FROM player WHERE user_id = ?", (user_id,))
+        player = cursor.fetchone()
+    res = dict(player)
     conn.close()
-    return player
+    return res
 
 @app.get("/")
 def serve_index():
     return FileResponse("/home/ido/projects/questify-todo/index.html")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8090)

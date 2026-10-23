@@ -23,6 +23,16 @@
                 return saved ? JSON.parse(saved) : false;
             });
 
+            const [user, setUser] = React.useState(() => {
+                const saved = localStorage.getItem('questify_user');
+                return saved ? JSON.parse(saved) : null;
+            });
+
+            const [authMode, setAuthMode] = React.useState('login'); // 'login' or 'signup'
+            const [authUsername, setAuthUsername] = React.useState('');
+            const [authPassword, setAuthPassword] = React.useState('');
+            const [authError, setAuthError] = React.useState('');
+
             const [quests, setQuests] = React.useState([]);
             const [player, setPlayer] = React.useState({ level: 1, xp: 0, next_level_xp: 500, streak: 1, coins: 0 });
 
@@ -34,12 +44,13 @@
             const [newCategory, setNewCategory] = React.useState('כללי');
 
             const fetchData = async () => {
+                if (!user) return;
                 try {
-                    const qRes = await fetch('/api/quests');
+                    const qRes = await fetch(`/api/quests?user_id=${user.id}`);
                     const qData = await qRes.json();
                     setQuests(qData);
 
-                    const pRes = await fetch('/api/player');
+                    const pRes = await fetch(`/api/player?user_id=${user.id}`);
                     const pData = await pRes.json();
                     setPlayer(pData);
                 } catch (err) {
@@ -48,16 +59,47 @@
             };
 
             React.useEffect(() => {
-                fetchData();
-            }, []);
+                if (user) {
+                    fetchData();
+                }
+            }, [user]);
 
             React.useEffect(() => {
                 localStorage.setItem('questify_dark', JSON.stringify(darkMode));
             }, [darkMode]);
 
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                setAuthError('');
+                const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
+                try {
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: authUsername, password: authPassword })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || 'שגיאת התחברות');
+                    }
+                    const userData = { id: data.user_id, username: data.username };
+                    setUser(userData);
+                    localStorage.setItem('questify_user', JSON.stringify(userData));
+                    setAuthUsername('');
+                    setAuthPassword('');
+                } catch (err) {
+                    setAuthError(err.message);
+                }
+            };
+
+            const logout = () => {
+                setUser(null);
+                localStorage.removeItem('questify_user');
+            };
+
             const addQuest = async (e) => {
                 e.preventDefault();
-                if (!newTitle.trim()) return;
+                if (!newTitle.trim() || !user) return;
                 const xpMap = { epic: 150, side: 50, daily: 30 };
                 const newQuest = {
                     title: newTitle,
@@ -67,7 +109,7 @@
                     category: newCategory
                 };
 
-                await fetch('/api/quests', {
+                await fetch(`/api/quests?user_id=${user.id}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(newQuest)
@@ -88,6 +130,7 @@
             };
 
             const smartBreakdown = async () => {
+                if (!user) return;
                 const bigGoal = prompt('הכנס מטרה גדולה (למשל: "להקים עסק דיגיטלי"):');
                 if (!bigGoal) return;
                 const generated = [
@@ -96,7 +139,7 @@
                     { title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, category: 'הקמה' }
                 ];
                 for (const q of generated) {
-                    await fetch('/api/quests', {
+                    await fetch(`/api/quests?user_id=${user.id}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(q)
@@ -104,6 +147,87 @@
                 }
                 fetchData();
             };
+
+            // Theme classes
+            const bgMain = darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
+            const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm';
+            const inputBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
+            const subText = darkMode ? 'text-slate-400' : 'text-slate-500';
+            const statBox = darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200';
+            const tagBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700';
+
+            if (!user) {
+                return (
+                    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${bgMain}`}>
+                        <div className={`${cardBg} border rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
+                            <h1 className="text-3xl font-black text-center mb-2 bg-gradient-to-r from-amber-500 to-indigo-600 bg-clip-text text-transparent">
+                                ⚔️ Questify Todo
+                            </h1>
+                            <p className={`text-center ${subText} text-sm mb-6`}>התחבר או הירשם כדי לנהל את הקווסטים שלך</p>
+
+                            <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-xl mb-6">
+                                <button 
+                                    onClick={() => setAuthMode('login')} 
+                                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authMode === 'login' ? 'bg-indigo-600 text-white' : subText}`}
+                                >
+                                    התחברות
+                                </button>
+                                <button 
+                                    onClick={() => setAuthMode('signup')} 
+                                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authMode === 'signup' ? 'bg-indigo-600 text-white' : subText}`}
+                                >
+                                    הרשמה
+                                </button>
+                            </div>
+
+                            {authError && (
+                                <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-xl text-sm mb-4 text-center">
+                                    {authError}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleAuth} className="space-y-4">
+                                <div>
+                                    <label className={`block text-xs ${subText} mb-1`}>שם משתמש</label>
+                                    <input 
+                                        type="text" 
+                                        value={authUsername} 
+                                        onChange={(e) => setAuthUsername(e.target.value)}
+                                        required
+                                        className={`w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 ${inputBg}`}
+                                        placeholder="הכנס שם משתמש..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className={`block text-xs ${subText} mb-1`}>סיסמה</label>
+                                    <input 
+                                        type="password" 
+                                        value={authPassword} 
+                                        onChange={(e) => setAuthPassword(e.target.value)}
+                                        required
+                                        className={`w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 ${inputBg}`}
+                                        placeholder="הכנס סיסמה..."
+                                    />
+                                </div>
+
+                                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-indigo-600/20">
+                                    {authMode === 'login' ? 'התחבר למערכת' : 'הירשם לחשבון חדש'}
+                                </button>
+
+                                <div className="flex justify-between items-center mt-4">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setDarkMode(!darkMode)}
+                                        className={`text-xs ${subText} underline`}
+                                    >
+                                        {darkMode ? '☀️ מצב בהיר' : '🌙 מצב כהה'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
 
             const filteredQuests = quests.filter(q => {
                 if (activeTab === 'completed' && !q.completed) return false;
@@ -114,14 +238,6 @@
 
             const xpPercentage = Math.min(100, (player.xp / player.next_level_xp) * 100);
 
-            // Theme classes
-            const bgMain = darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
-            const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm';
-            const inputBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
-            const subText = darkMode ? 'text-slate-400' : 'text-slate-500';
-            const statBox = darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200';
-            const tagBg = darkMode ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700';
-
             return (
                 <div className={`min-h-screen transition-colors duration-300 ${bgMain}`}>
                     <div className="max-w-4xl mx-auto p-4 md:p-8">
@@ -131,17 +247,24 @@
                                 <div>
                                     <div className="flex items-center gap-3">
                                         <h1 className="text-3xl font-black bg-gradient-to-r from-amber-500 to-indigo-600 bg-clip-text text-transparent">
-                                            ⚔️ Questify Todo (Full-Stack)
+                                            ⚔️ Questify Todo
                                         </h1>
                                         <button 
                                             onClick={() => setDarkMode(!darkMode)}
                                             className={`p-2 rounded-xl border text-sm transition ${darkMode ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
                                             title="החלף מצב תצוגה (כהה/בהיר)"
                                         >
-                                            {darkMode ? '☀️ מצב בהיר' : '🌙 מצב כהה'}
+                                            {darkMode ? '☀️' : '🌙'}
+                                        </button>
+                                        <button 
+                                            onClick={logout}
+                                            className="px-3 py-2 rounded-xl border border-red-500/30 text-red-500 text-xs font-bold hover:bg-red-500/10 transition"
+                                            title="התנתק מהמערכת"
+                                        >
+                                            התנתק ({user.username})
                                         </button>
                                     </div>
-                                    <p className={`${subText} text-sm mt-1`}>מנוהל ע״י שרת Python FastAPI ומסד נתונים SQLite</p>
+                                    <p className={`${subText} text-sm mt-1`}>מחובר כ- <span className="font-bold text-indigo-500">{user.username}</span></p>
                                 </div>
                                 
                                 <div className={`flex items-center gap-4 ${statBox} px-5 py-3 rounded-xl border transition-colors`}>
