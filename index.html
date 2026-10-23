@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Questify Todo - RPG Task Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Heebo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function App() {
+            const [quests, setQuests] = React.useState(() => {
+                const saved = localStorage.getItem('questify_quests');
+                return saved ? JSON.parse(saved) : [
+                    { id: 1, title: 'לפתח אבטיפוס ראשוני לאפליקציה', type: 'epic', energy: 'high', xp: 150, completed: false, category: 'פיתוח' },
+                    { id: 2, title: 'סידור שולחן עבודה וניקיון מייל', type: 'daily', energy: 'low', xp: 30, completed: true, category: 'ארגון' },
+                    { id: 3, title: 'קריאת פרק בספר מקצועי', type: 'side', energy: 'medium', xp: 50, completed: false, category: 'למידה' }
+                ];
+            });
+
+            const [player, setPlayer] = React.useState(() => {
+                const saved = localStorage.getItem('questify_player');
+                return saved ? JSON.parse(saved) : { level: 3, xp: 240, nextLevelXp: 500, streak: 5, coins: 120 };
+            });
+
+            const [activeTab, setActiveTab] = React.useState('all');
+            const [energyFilter, setEnergyFilter] = React.useState('all');
+            const [newTitle, setNewTitle] = React.useState('');
+            const [newType, setNewType] = React.useState('side');
+            const [newEnergy, setNewEnergy] = React.useState('medium');
+            const [newCategory, setNewCategory] = React.useState('כללי');
+
+            React.useEffect(() => {
+                localStorage.setItem('questify_quests', JSON.stringify(quests));
+            }, [quests]);
+
+            React.useEffect(() => {
+                localStorage.setItem('questify_player', JSON.stringify(player));
+            }, [player]);
+
+            const addQuest = (e) => {
+                e.preventDefault();
+                if (!newTitle.trim()) return;
+                const xpMap = { epic: 150, side: 50, daily: 30 };
+                const newItem = {
+                    id: Date.now(),
+                    title: newTitle,
+                    type: newType,
+                    energy: newEnergy,
+                    xp: xpMap[newType] || 50,
+                    completed: false,
+                    category: newCategory
+                };
+                setQuests([newItem, ...quests]);
+                setNewTitle('');
+            };
+
+            const toggleQuest = (id) => {
+                setQuests(quests.map(q => {
+                    if (q.id === id) {
+                        const nextCompleted = !q.completed;
+                        if (nextCompleted) {
+                            addXp(q.xp);
+                        } else {
+                            removeXp(q.xp);
+                        }
+                        return { ...q, completed: nextCompleted };
+                    }
+                    return q;
+                }));
+            };
+
+            const addXp = (amount) => {
+                let newXp = player.xp + amount;
+                let newLevel = player.level;
+                let nextXp = player.nextLevelXp;
+                let newCoins = player.coins + Math.floor(amount / 2);
+
+                if (newXp >= nextXp) {
+                    newLevel += 1;
+                    newXp -= nextXp;
+                    nextXp = Math.floor(nextXp * 1.3);
+                }
+                setPlayer({ ...player, xp: newXp, level: newLevel, nextLevelXp: nextXp, coins: newCoins });
+            };
+
+            const removeXp = (amount) => {
+                setPlayer({ ...player, xp: Math.max(0, player.xp - amount) });
+            };
+
+            const deleteQuest = (id) => {
+                setQuests(quests.filter(q => q.id !== id));
+            };
+
+            const smartBreakdown = () => {
+                const bigGoal = prompt('הכנס מטרה גדולה (למשל: "להקים עסק דיגיטלי"):');
+                if (!bigGoal) return;
+                const generated = [
+                    { id: Date.now() + 1, title: `מחקר שוק עבור: ${bigGoal}`, type: 'epic', energy: 'high', xp: 150, completed: false, category: 'אסטרטגיה' },
+                    { id: Date.now() + 2, title: `כתיבת תוכנית עבודה ראשונית`, type: 'side', energy: 'medium', xp: 75, completed: false, category: 'תכנון' },
+                    { id: Date.now() + 3, title: `פתיחת ערוץ תקשורת ראשון`, type: 'daily', energy: 'low', xp: 40, completed: false, category: 'הקמה' }
+                ];
+                setQuests([...generated, ...quests]);
+            };
+
+            const filteredQuests = quests.filter(q => {
+                if (activeTab === 'completed' && !q.completed) return false;
+                if (activeTab === 'active' && q.completed) return false;
+                if (energyFilter !== 'all' && q.energy !== energyFilter) return false;
+                return true;
+            });
+
+            const xpPercentage = Math.min(100, (player.xp / player.nextLevelXp) * 100);
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                    {/* Header & Player Stats */}
+                    <header className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl">
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                            <div>
+                                <h1 className="text-3xl font-black bg-gradient-to-r from-amber-400 to-indigo-400 bg-clip-text text-transparent">
+                                    ⚔️ Questify Todo
+                                </h1>
+                                <p className="text-slate-400 text-sm mt-1">נהל משימות, צבור XP והפוך את העבודה למשחק</p>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800">
+                                <div className="text-center">
+                                    <span className="text-xs text-slate-400 block">רמה</span>
+                                    <span className="text-xl font-bold text-amber-400">Lv. {player.level}</span>
+                                </div>
+                                <div className="h-8 w-px bg-slate-800"></div>
+                                <div className="text-center">
+                                    <span className="text-xs text-slate-400 block">רצף</span>
+                                    <span className="text-xl font-bold text-emerald-400">🔥 {player.streak} ימים</span>
+                                </div>
+                                <div className="h-8 w-px bg-slate-800"></div>
+                                <div className="text-center">
+                                    <span className="text-xs text-slate-400 block">זהב</span>
+                                    <span className="text-xl font-bold text-yellow-400">🪙 {player.coins}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* XP Progress Bar */}
+                        <div className="mt-6">
+                            <div className="flex justify-between text-xs text-slate-400 mb-1">
+                                <span>התקדמות לרמה הבאה</span>
+                                <span>{player.xp} / {player.nextLevelXp} XP</span>
+                            </div>
+                            <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
+                                <div className="bg-gradient-to-r from-amber-500 to-indigo-500 h-full transition-all duration-500" style={{ width: `${xpPercentage}%` }}></div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Add Quest Form & AI Breakdown */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-slate-200">➕ הוספת קווסט חדש</h2>
+                            <button onClick={smartBreakdown} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
+                                ✨ פירוק מטרה חכם (AI)
+                            </button>
+                        </div>
+
+                        <form onSubmit={addQuest} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                            <input 
+                                type="text" 
+                                placeholder="מה המשימה או הקווסט הבא שלך?" 
+                                value={newTitle}
+                                onChange={(e) => setNewTitle(e.target.value)}
+                                className="md:col-span-5 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                            />
+                            
+                            <select value={newType} onChange={(e) => setNewType(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-indigo-500">
+                                <option value="side">⚔️ קווסט צד (50 XP)</option>
+                                <option value="epic">🐉 מסע אפי (150 XP)</option>
+                                <option value="daily">📜 משימה יומית (30 XP)</option>
+                            </select>
+
+                            <select value={newEnergy} onChange={(e) => setNewEnergy(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-indigo-500">
+                                <option value="high">⚡ אנרגיה גבוהה</option>
+                                <option value="medium">☕ אנרגיה בינונית</option>
+                                <option value="low">🌙 אנרגיה נמוכה</option>
+                            </select>
+
+                            <button type="submit" className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl py-2.5 transition shadow-lg shadow-emerald-600/20">
+                                צור קווסט
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                        <div className="flex gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+                            <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>הכל</button>
+                            <button onClick={() => setActiveTab('active')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'active' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>פעילים</button>
+                            <button onClick={() => setActiveTab('completed')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'completed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>הושלמו</button>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                            <span className="text-xs text-slate-400">סינון אנרגיה:</span>
+                            <select value={energyFilter} onChange={(e) => setEnergyFilter(e.target.value)} className="bg-transparent text-sm text-slate-200 focus:outline-none">
+                                <option value="all" className="bg-slate-900">הכל</option>
+                                <option value="high" className="bg-slate-900">⚡ גבוהה</option>
+                                <option value="medium" className="bg-slate-900">☕ בינונית</option>
+                                <option value="low" className="bg-slate-900">🌙 נמוכה</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Quest List */}
+                    <div className="space-y-3">
+                        {filteredQuests.length === 0 ? (
+                            <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-2xl text-slate-500">
+                                אין קווסטים להצגה כרגע. צור קווסט חדש למעלה! 🛡️
+                            </div>
+                        ) : (
+                            filteredQuests.map(q => {
+                                const energyBadge = {
+                                    high: { label: '⚡ גבוהה', class: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
+                                    medium: { label: '☕ בינונית', class: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+                                    low: { label: '🌙 נמוכה', class: 'text-purple-400 bg-purple-400/10 border-purple-400/20' }
+                                }[q.energy] || { label: '', class: '' };
+
+                                const typeBadge = {
+                                    epic: '🐉 מסע אפי',
+                                    side: '⚔️ קווסט צד',
+                                    daily: '📜 משימה יומית'
+                                }[q.type];
+
+                                return (
+                                    <div key={q.id} className={`flex items-center justify-between p-4 rounded-xl border transition bg-slate-900 ${q.completed ? 'border-emerald-500/30 opacity-60' : 'border-slate-800 hover:border-slate-700'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={q.completed} 
+                                                onChange={() => toggleQuest(q.id)}
+                                                className="w-5 h-5 accent-emerald-500 rounded cursor-pointer"
+                                            />
+                                            <div>
+                                                <h3 className={`font-semibold text-slate-100 ${q.completed ? 'line-through text-slate-400' : ''}`}>
+                                                    {q.title}
+                                                </h3>
+                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                    <span className="text-xs px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-slate-300">{typeBadge}</span>
+                                                    <span className={`text-xs px-2 py-0.5 rounded-md border ${energyBadge.class}`}>{energyBadge.label}</span>
+                                                    <span className="text-xs text-amber-400 font-bold">+{q.xp} XP</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => deleteQuest(q.id)}
+                                            className="text-slate-500 hover:text-red-400 p-2 transition"
+                                            title="מחק קווסט"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
